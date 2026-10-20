@@ -8,15 +8,8 @@ on:
         required: true
         default: "Review this repository and summarize its files, risks, and recommended next steps."
         type: string
-      auth_mode:
-        description: "How the gateway expects its credential"
-        required: true
-        type: choice
-        options:
-          - api_key
-          - bearer_token
       model:
-        description: "Optional model name required by your gateway (leave blank to use gateway default)"
+        description: "Optional exact model ID from your AgentRouter console"
         required: false
         default: ""
         type: string
@@ -45,29 +38,24 @@ jobs:
         shell: pwsh
         run: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
 
-      - name: Run Claude Code through custom gateway
+      - name: Run Claude Code through AgentRouter
         shell: pwsh
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.GATEWAY_BASE_URL }}
           GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
-          GATEWAY_AUTH_MODE: ${{ inputs.auth_mode }}
           MODEL_NAME: ${{ inputs.model }}
           TASK_PROMPT: ${{ inputs.task }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_BASE_URL)) {
-            throw "Missing GATEWAY_BASE_URL secret. Add your gateway's Anthropic-compatible base URL in repository Actions secrets."
+            throw "Missing GATEWAY_BASE_URL secret. For AgentRouter, use https://agentrouter.org/"
           }
           if ([string]::IsNullOrWhiteSpace($env:GATEWAY_API_KEY)) {
-            throw "Missing GATEWAY_API_KEY secret. Add your gateway credential in repository Actions secrets."
+            throw "Missing GATEWAY_API_KEY secret. Add the token from AgentRouter Console > Token."
           }
 
-          if ($env:GATEWAY_AUTH_MODE -eq "bearer_token") {
-            $env:ANTHROPIC_AUTH_TOKEN = $env:GATEWAY_API_KEY
-            Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
-          } else {
-            $env:ANTHROPIC_API_KEY = $env:GATEWAY_API_KEY
-            Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue
-          }
+          # AgentRouter's Claude Code instructions specify both variables.
+          $env:ANTHROPIC_AUTH_TOKEN = $env:GATEWAY_API_KEY
+          $env:ANTHROPIC_API_KEY = $env:GATEWAY_API_KEY
 
           $claudeArgs = @(
             "-p", $env:TASK_PROMPT,

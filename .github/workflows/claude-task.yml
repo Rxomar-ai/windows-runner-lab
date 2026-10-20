@@ -1,0 +1,58 @@
+name: Claude Code Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Read-only task for Claude Code"
+        required: true
+        default: "Review this repository and summarize its files, risks, and recommended next steps."
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  claude-task:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install Claude Code
+        shell: pwsh
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Code in read-only plan mode
+        shell: pwsh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TASK_PROMPT: ${{ inputs.task }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+            throw "Missing ANTHROPIC_API_KEY. Add it under Settings > Secrets and variables > Actions."
+          }
+          claude -p $env:TASK_PROMPT --permission-mode plan --max-turns 3 --output-format text 2>&1 |
+            Tee-Object -FilePath claude-output.txt
+          if ($LASTEXITCODE -ne 0) {
+            throw "Claude Code exited with code $LASTEXITCODE"
+          }
+
+      - name: Upload Claude output
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: claude-code-output
+          path: claude-output.txt
+          if-no-files-found: ignore
+          retention-days: 3

@@ -1,0 +1,30 @@
+
+name: Claude Code on Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  claude:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code
+        shell: pwsh
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Verify installation
+        shell: pwsh
+        run: claude --version

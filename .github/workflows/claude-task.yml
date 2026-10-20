@@ -8,15 +8,10 @@ on:
         required: true
         default: "Review this repository and summarize its files, risks, and recommended next steps."
         type: string
-      base_url:
-        description: "AgentRouter Anthropic-compatible base URL (do not append /v1)"
-        required: true
-        default: "https://co.agentrouter.org"
-        type: string
       model:
-        description: "Model ID enabled for your AgentRouter token"
-        required: true
-        default: "claude-opus-4-8"
+        description: "Optional model ID enabled for your Aiqana key; leave blank to use Claude Code's default"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -43,39 +38,36 @@ jobs:
         shell: pwsh
         run: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
 
-      - name: Run Claude Code through AgentRouter
+      - name: Run Claude Code through Aiqana
         shell: pwsh
         env:
-          ANTHROPIC_BASE_URL: ${{ inputs.base_url }}
-          GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
+          AIQANA_API_KEY: ${{ secrets.AIQANA_API_KEY }}
           MODEL_NAME: ${{ inputs.model }}
           TASK_PROMPT: ${{ inputs.task }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_BASE_URL)) {
-            throw "Missing base URL. Use https://co.agentrouter.org without /v1 for the Anthropic-compatible API."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:GATEWAY_API_KEY)) {
-            throw "Missing GATEWAY_API_KEY. Add the AgentRouter token under Settings > Secrets and variables > Actions."
-          }
-          if ($env:ANTHROPIC_BASE_URL -match '/v1/?$') {
-            throw "Incorrect Anthropic base URL: remove the trailing /v1. AgentRouter Anthropic API uses the base URL without /v1."
+          if ([string]::IsNullOrWhiteSpace($env:AIQANA_API_KEY)) {
+            throw "Missing AIQANA_API_KEY. Add your Aiqana key under Settings > Secrets and variables > Actions."
           }
 
-          # AgentRouter documents both variables for Claude Code authentication.
-          $env:ANTHROPIC_AUTH_TOKEN = $env:GATEWAY_API_KEY
-          $env:ANTHROPIC_API_KEY = $env:GATEWAY_API_KEY
+          # Claude Code appends /v1/messages itself, so use the origin only.
+          $env:ANTHROPIC_BASE_URL = "https://aiqana.com"
+          # Use a Bearer token for the Anthropic-compatible gateway.
+          $env:ANTHROPIC_AUTH_TOKEN = $env:AIQANA_API_KEY
+          Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
 
           $claudeArgs = @(
             "-p", $env:TASK_PROMPT,
             "--permission-mode", "plan",
             "--max-turns", "3",
-            "--output-format", "text",
-            "--model", $env:MODEL_NAME
+            "--output-format", "text"
           )
+          if (-not [string]::IsNullOrWhiteSpace($env:MODEL_NAME)) {
+            $claudeArgs += @("--model", $env:MODEL_NAME)
+          }
 
           & claude @claudeArgs 2>&1 | Tee-Object -FilePath claude-output.txt
           if ($LASTEXITCODE -ne 0) {
-            throw "Claude Code exited with code $LASTEXITCODE"
+            throw "Claude Code exited with code $LASTEXITCODE. Check whether Aiqana supports Anthropic Messages API at /v1/messages and whether the model ID is enabled."
           }
 
       - name: Upload Claude output

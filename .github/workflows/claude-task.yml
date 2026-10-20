@@ -8,10 +8,15 @@ on:
         required: true
         default: "Review this repository and summarize its files, risks, and recommended next steps."
         type: string
+      base_url:
+        description: "AgentRouter Anthropic-compatible base URL (do not append /v1)"
+        required: true
+        default: "https://co.agentrouter.org"
+        type: string
       model:
-        description: "Optional exact model ID from your AgentRouter console"
-        required: false
-        default: ""
+        description: "Model ID enabled for your AgentRouter token"
+        required: true
+        default: "claude-opus-4-8"
         type: string
 
 permissions:
@@ -41,19 +46,22 @@ jobs:
       - name: Run Claude Code through AgentRouter
         shell: pwsh
         env:
-          ANTHROPIC_BASE_URL: ${{ secrets.GATEWAY_BASE_URL }}
+          ANTHROPIC_BASE_URL: ${{ inputs.base_url }}
           GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
           MODEL_NAME: ${{ inputs.model }}
           TASK_PROMPT: ${{ inputs.task }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_BASE_URL)) {
-            throw "Missing GATEWAY_BASE_URL secret. For AgentRouter, use https://agentrouter.org/"
+            throw "Missing base URL. Use https://co.agentrouter.org without /v1 for the Anthropic-compatible API."
           }
           if ([string]::IsNullOrWhiteSpace($env:GATEWAY_API_KEY)) {
-            throw "Missing GATEWAY_API_KEY secret. Add the token from AgentRouter Console > Token."
+            throw "Missing GATEWAY_API_KEY. Add the AgentRouter token under Settings > Secrets and variables > Actions."
+          }
+          if ($env:ANTHROPIC_BASE_URL -match '/v1/?$') {
+            throw "Incorrect Anthropic base URL: remove the trailing /v1. AgentRouter Anthropic API uses the base URL without /v1."
           }
 
-          # AgentRouter's Claude Code instructions specify both variables.
+          # AgentRouter documents both variables for Claude Code authentication.
           $env:ANTHROPIC_AUTH_TOKEN = $env:GATEWAY_API_KEY
           $env:ANTHROPIC_API_KEY = $env:GATEWAY_API_KEY
 
@@ -61,11 +69,9 @@ jobs:
             "-p", $env:TASK_PROMPT,
             "--permission-mode", "plan",
             "--max-turns", "3",
-            "--output-format", "text"
+            "--output-format", "text",
+            "--model", $env:MODEL_NAME
           )
-          if (-not [string]::IsNullOrWhiteSpace($env:MODEL_NAME)) {
-            $claudeArgs += @("--model", $env:MODEL_NAME)
-          }
 
           & claude @claudeArgs 2>&1 | Tee-Object -FilePath claude-output.txt
           if ($LASTEXITCODE -ne 0) {

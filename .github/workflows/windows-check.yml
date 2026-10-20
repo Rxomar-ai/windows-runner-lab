@@ -1,0 +1,33 @@
+
+name: Windows Runner Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Windows Version
+        shell: pwsh
+        run: |
+          Get-ComputerInfo |
+            Select-Object WindowsProductName,
+              WindowsVersion, OsArchitecture
+
+      - name: Check Memory
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object TotalPhysicalMemory
+
+      - name: Check Disk
+        shell: pwsh
+        run: |
+          Get-PSDrive C |
+            Select-Object Name, Used, Free

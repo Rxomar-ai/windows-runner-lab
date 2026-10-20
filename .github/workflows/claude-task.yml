@@ -9,7 +9,7 @@ on:
         default: "Review this repository and summarize its files, risks, and recommended next steps."
         type: string
       model:
-        description: "Optional model ID enabled for your Aiqana key; leave blank to use Claude Code's default"
+        description: "Exact Claude-compatible model ID shown in your JustWoker dashboard"
         required: false
         default: ""
         type: string
@@ -38,21 +38,20 @@ jobs:
         shell: pwsh
         run: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
 
-      - name: Run Claude Code through Aiqana
+      - name: Run Claude Code through JustWoker
         shell: pwsh
         env:
-          AIQANA_API_KEY: ${{ secrets.AIQANA_API_KEY }}
+          JUSTWOKER_API_KEY: ${{ secrets.JUSTWOKER_API_KEY }}
           MODEL_NAME: ${{ inputs.model }}
           TASK_PROMPT: ${{ inputs.task }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:AIQANA_API_KEY)) {
-            throw "Missing AIQANA_API_KEY. Add your Aiqana key under Settings > Secrets and variables > Actions."
+          if ([string]::IsNullOrWhiteSpace($env:JUSTWOKER_API_KEY)) {
+            throw "Missing JUSTWOKER_API_KEY. Add the key from https://api.justwoker.icu/dashboard/overview under Settings > Secrets and variables > Actions."
           }
 
-          # Claude Code appends /v1/messages itself, so use the origin only.
-          $env:ANTHROPIC_BASE_URL = "https://aiqana.com"
-          # Use a Bearer token for the Anthropic-compatible gateway.
-          $env:ANTHROPIC_AUTH_TOKEN = $env:AIQANA_API_KEY
+          # JustWoker's Anthropic-compatible base URL omits /v1.
+          $env:ANTHROPIC_BASE_URL = "https://api.justwoker.icu"
+          $env:ANTHROPIC_AUTH_TOKEN = $env:JUSTWOKER_API_KEY
           Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
 
           $claudeArgs = @(
@@ -62,12 +61,13 @@ jobs:
             "--output-format", "text"
           )
           if (-not [string]::IsNullOrWhiteSpace($env:MODEL_NAME)) {
+            $env:ANTHROPIC_MODEL = $env:MODEL_NAME
             $claudeArgs += @("--model", $env:MODEL_NAME)
           }
 
           & claude @claudeArgs 2>&1 | Tee-Object -FilePath claude-output.txt
           if ($LASTEXITCODE -ne 0) {
-            throw "Claude Code exited with code $LASTEXITCODE. Check whether Aiqana supports Anthropic Messages API at /v1/messages and whether the model ID is enabled."
+            throw "Claude Code exited with code $LASTEXITCODE. Verify the JustWoker key and an enabled model ID in the dashboard."
           }
 
       - name: Upload Claude output

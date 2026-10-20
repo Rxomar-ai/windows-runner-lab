@@ -8,6 +8,18 @@ on:
         required: true
         default: "Review this repository and summarize its files, risks, and recommended next steps."
         type: string
+      auth_mode:
+        description: "How the gateway expects its credential"
+        required: true
+        type: choice
+        options:
+          - api_key
+          - bearer_token
+      model:
+        description: "Optional model name required by your gateway (leave blank to use gateway default)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -33,17 +45,41 @@ jobs:
         shell: pwsh
         run: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
 
-      - name: Run Claude Code in read-only plan mode
+      - name: Run Claude Code through custom gateway
         shell: pwsh
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.GATEWAY_BASE_URL }}
+          GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
+          GATEWAY_AUTH_MODE: ${{ inputs.auth_mode }}
+          MODEL_NAME: ${{ inputs.model }}
           TASK_PROMPT: ${{ inputs.task }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
-            throw "Missing ANTHROPIC_API_KEY. Add it under Settings > Secrets and variables > Actions."
+          if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_BASE_URL)) {
+            throw "Missing GATEWAY_BASE_URL secret. Add your gateway's Anthropic-compatible base URL in repository Actions secrets."
           }
-          claude -p $env:TASK_PROMPT --permission-mode plan --max-turns 3 --output-format text 2>&1 |
-            Tee-Object -FilePath claude-output.txt
+          if ([string]::IsNullOrWhiteSpace($env:GATEWAY_API_KEY)) {
+            throw "Missing GATEWAY_API_KEY secret. Add your gateway credential in repository Actions secrets."
+          }
+
+          if ($env:GATEWAY_AUTH_MODE -eq "bearer_token") {
+            $env:ANTHROPIC_AUTH_TOKEN = $env:GATEWAY_API_KEY
+            Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+          } else {
+            $env:ANTHROPIC_API_KEY = $env:GATEWAY_API_KEY
+            Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue
+          }
+
+          $claudeArgs = @(
+            "-p", $env:TASK_PROMPT,
+            "--permission-mode", "plan",
+            "--max-turns", "3",
+            "--output-format", "text"
+          )
+          if (-not [string]::IsNullOrWhiteSpace($env:MODEL_NAME)) {
+            $claudeArgs += @("--model", $env:MODEL_NAME)
+          }
+
+          & claude @claudeArgs 2>&1 | Tee-Object -FilePath claude-output.txt
           if ($LASTEXITCODE -ne 0) {
             throw "Claude Code exited with code $LASTEXITCODE"
           }
